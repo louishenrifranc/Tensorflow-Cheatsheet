@@ -6,7 +6,7 @@
 - [Save and restore model](#checkpoint)
 - [Tensoarboard](#tensoarboard)
 - [Regularization](#regularization)
-- [Preprocessing](#preprocessing)
+- [Preprocessing](#preprocessing-examples-with-queues)
 - [CNN & shits](#computer-vision-application)
 - [RNN & shits](#nlp-application)
 - [Higher order operations](#higher-order-operators)
@@ -414,7 +414,7 @@ with tf.control_dependencies(update_ops):
             self.train_dis = self.optimizer.apply_gradients(grads_dis)
 ```
 
-The trainable boolean can be a placeholder, so that depending on the feeding dictionnary, the computation in the batch norm layer will be different
+The trainable boolean can be a placeholder, so that depending on the feeding dictionnary, the computation in the batch norm layer will be different  
 
 # Preprocessing examples with Queues
 It is possible to load data directly from numpy arrays, however it is best practise to use protobuf tensorflow formats such as ```tf.Example``` or ```tf.SequenceExample```. 
@@ -569,14 +569,14 @@ LSTM works better than RNN to remenber long term dependencies, because in its fo
 2. Transform them into tuples
     ```
     rnn_tuple_state = tuple(
-             [tf.nn.rnn_cell.LSTMStateTuple(l[idx][0],l[idx][1])
+             [tf.contrib.rnn.LSTMStateTuple(l[idx][0],l[idx][1])
               for idx in range(num_layers)]
     )
     ```
 3. Create the dynamic rnn, and passed initialized state
     ```
-    cell = tf.nn.rnn_cell.LSTMCell(state_size, state_is_tuple=True)
-    cell = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers, state_is_tuple=True)
+    cell = tf.contrib.rnn.LSTMCell(state_size, state_is_tuple=True)
+    cell = tf.contrib.rnn.MultiRNNCell([cell] * num_layers, state_is_tuple=True)
 
     outputs, state = tf.nn.dynamic_rnn(cell, series_batch_input, initial_state=rnn_tuple_state)
     ```
@@ -584,7 +584,7 @@ LSTM works better than RNN to remenber long term dependencies, because in its fo
 ### Stacking recurrent neural network cells
 1. Create the architecture (example for a GRUCell with dropout between every stacking cell
     ```
-    from tensorflow.nn.rnn_cell import GRUCell, DropoutWrapper, MultiRNNCell
+    from tensorflow.contrib.rnn import GRUCell, DropoutWrapper, MultiRNNCell
 
     num_neurons = 200
     num_layers = 3
@@ -744,6 +744,17 @@ Here is a non exhaustive list of usefull command:
 * Run a session for a number of step: run -t 10
 
 # Miscellanous
+* Use any numpy operations in the graph. Note that it does not support model serialization
+    ```
+    def function(tensor):
+	return np.repeat(tensor,2, axis=0)
+    inp = tf.placeholder(tf.float32, [None])
+    op = tf.py_func(function, [inp], tf.float32)
+
+    sess = tf.InteractiveSession()
+    print(np.repeat([4, 3, 4, 5],2, axis=0))
+    print(op.eval({inp: [4, 3, 5, 4]}))
+    ```
 * ```tf.squeeze(dens)``` Remove all dimension of length 1
 * ```tf.sign(var)``` return -1, 0, or 1 depending the var sign.
 * ```tf.reduce_max(3D_tensor, reduction_indices=2)``` return a 2D tensor, where only the max element in the 3dim is kept.
@@ -764,8 +775,11 @@ Here is a non exhaustive list of usefull command:
     image = tf.cond(pred=tf.equal(tf.shape(image)[2], 3), fn2=lambda: tf.image.grayscale_to_rgb(image), fn1=lambda: image)
     ```
 * FLAGS is an internal mecanism that allowed the same functionnality as argparse
-* ```clip_discriminator_var_op = [var.assign(tf.clip_by_value(var, clip_value_min, clip_value_max)) for
-                                         var in list_tf_variables]``` create an operator to run in a sess that will clip values.
+* Create an operator to run in a sess that will clip values
+  ```
+  clip_discriminator_var_op = [var.assign(tf.clip_by_value(var, clip_value_min, clip_value_max)) for
+                                         var in list_tf_variables]
+  ``` .
 
 
 # Tensorflow fold
