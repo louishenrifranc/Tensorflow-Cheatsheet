@@ -1,4 +1,5 @@
 # Index
+- [Introduction](#introduction)
 - [Graph and Session notions](#graph-and-session)
 - [Dynamic and Static shape](#dynamic-shape-vs-static-shape)
 - [Tensorflow variable](#variable)
@@ -10,10 +11,16 @@
 - [CNN & shits](#computer-vision-application)
 - [RNN & shits](#nlp-application)
 - [Higher order operations](#higher-order-operators)
-- [Debugging](#debugging)
+- [Debugging](#debugging-and-tracing)
 - [Miscellanous](#miscellanous)
 - [Dynamic graph computation](#tensorflow-fold)
 - [Tensorflow Estimator](#tensorflow-estimator)
+
+# Introduction
+* Tensorflow, a Symbolic library [on symbolic and imperative libraries](http://mxnet-tqchen.readthedocs.io/en/latest/system/program_model.html))  
+* [Linux installation](https://www.tensorflow.org/install/install_linux)
+* [Windows installation (GPU support)](http://www.netinstructions.com/how-to-install-and-run-gpu-enabled-tensorflow-on-windows/)
+* [Azure installation](https://www.lutzroeder.com/blog/2016-12-27-tensorflow-azure)
 
 # Graph and Session
 ### Graph vs Session
@@ -76,6 +83,9 @@ Sparse vector are created usually from sequence features when parsing a protobuf
 * Setting trainable=False keeps the variable out of the GraphKeys.TRAINABLE_VARIABLES collection in the graph, so they won't be trained when backpropagating. 
 * Setting collections=[] keeps the variable out of the GraphKeys.GLOBAL_VARIABLES collection used for saving and restoring checkpoints.  
 Example: ```input_data = tf.Variable(data_initializer, trainable=False, collections=[])```
+
+## Tensors
+Tensors are similar as variable but they don't conserve their state between two calls of ```sess.run```.
 
 ## Shared variable
 It is possible to reuse weights, just by setting new variable to older one defined previously. For that, you must be in the same namescope, and look for a variable with the same name. Here is an example:
@@ -252,6 +262,14 @@ output_conv_shape = output_conv_sg.get_shape().as_list()
 """..."""
 ```
 
+### Different function between forward and backward
+In the next snippet, g(x) is used for the bacward pass, but f(x) is used for forwarding the signal.  
+```
+t = g(x)
+y = t + tf.stop_gradient(f(x) - t)
+```
+
+
 # Tensoarboard
 * Launch a session with ```tensorboard --logdir=""```.
 
@@ -357,7 +375,101 @@ summary_writer.add_summary(summary_str, current_iter)
     embedding.sprite.single_image_dim.extend([thumbnail_width, thumbnail_height])
     projector.visualize_embeddings(summary_writer, config
     ```
-    
+
+<details>
+<summary>Full example</summary>
+<p><code>
+
+    # Prerequisite
+    dictionary = # It is a dictionnary where keys are incremental integers
+                 # and value is a pair of embedding and image
+
+    # Size of the thumbmail
+    thumbnail_width = 28  # width of a small thumbnail
+    thumbnail_height = thumbnail_width  # height
+
+    # size of the embeddings (in the dictionnary)
+    embeddings_length = 4800
+
+    # 1. Make the big spirit picture
+    filename_spirit_picture = "master.jpg"
+    filename_temporary_embedding = "features.p"
+
+
+    if not os.path.isfile(filename_spirit_picture) or not os.path.isfile(filename_temporary_embedding) or True:
+        print("Creating spirit")
+        Image.MAX_IMAGE_PIXELS = None
+        images = []
+
+        features = np.zeros((len(dictionary), embeddings_length))
+
+        # Make a vector for all images and a list for their respective embedding (same index)
+        for iteration, pair in dictionary.items():
+            #
+            array = cv2.resize(pair[1], (thumbnail_width, thumbnail_height))
+
+            img = Image.fromarray(array)
+            # Append the image to the list of images
+            images.append(img)
+            # Get the embedding for that picture
+            features[iteration] = pair[0]
+
+        # Build the spirit image
+        print('Number of images %d' % len(images))
+        image_width, image_height = images[0].size
+        master_width = (image_width * (int)(np.sqrt(len(images))))
+        master_height = master_width
+        print('Length (in pixel) of the square image %d' % master_width)
+        master = Image.new(
+            mode='RGBA',
+            size=(master_width, master_height),
+            color=(0, 0, 0, 0))
+
+        for count, image in enumerate(images):
+            locationX = (image_width * count) % master_width
+            locationY = image_height * (image_width * count // master_width)
+            master.paste(image, (locationX, locationY))
+        master.save(filename_spirit_picture, transparency=0)
+        pickle.dump(features, open(filename_temporary_embedding, 'wb'))
+    else:
+        print('Spirit already created')
+        features = pickle.load(open(filename_temporary_embedding, 'r'))
+
+    print('Starting session')
+    sess = tf.InteractiveSession()
+    log_dir = 'logs'
+
+    # Create a variable containing all features
+    embeddings = tf.Variable(features, name='embeddings')
+
+    # Initialize variables
+    tf.global_variables_initializer().run()
+    saver = tf.train.Saver()
+    saver.save(sess, save_path=os.path.join(log_dir, 'model.ckpt'), global_step=None)
+
+    # add metadata
+    summary_writer = tf.summary.FileWriter(log_dir, graph=tf.get_default_graph())
+
+    metadata_path = os.path.join(log_dir, "metadata.tsv")
+    config = projector.ProjectorConfig()
+
+    embedding = config.embeddings.add()
+    embedding.metadata_path = metadata_path
+
+    print('Add metadata')
+    embedding.tensor_name = embeddings.name
+
+    # add image metadata
+    embedding.sprite.image_path = filename_spirit_picture
+    embedding.sprite.single_image_dim.extend([thumbnail_width, thumbnail_height])
+    projector.visualize_embeddings(summary_writer, config)
+
+    print('Finish now clean repo')
+    # Clean actual repo
+    if not to_saved:
+        os.remove(filename_temporary_embedding)
+</code></p>
+</details>
 
 # Regularization
 ### L2 regularization
@@ -516,6 +628,11 @@ As of now, dynamic pad is not support with shuffle, but one may use a shuffle_ba
 
 #### Bucket queues
 Tricky and not well documented (does not seem to work with multiple different variable length features). [Best documentation so far :'('](https://github.com/tensorflow/tensorflow/issues/5609)
+
+
+### Validation and Testing queues
+It is not recommendent to use a ```tf.cond(is_training, lambda _: training_queue, lambda _: test_queue)``` because training becomes very slow becomes at each iteration (training time), the cond will be waiting for the two queues to output something, and everytime some data are dropped.  
+The recommanded way, is to have a different script that run separately (in another script), fetch some checkpoint, and compute accuracy
 
 # Computer vision application
 ## Convolution
@@ -716,7 +833,8 @@ body = lambda i, jk: return (i+1, (jk[0] - jk[1], jk[0] + jk[1]))
 (i_final, jk_final) = tf.while_loop(condition, body, init)
 ```
 
-# Debugging
+# Debugging and Tracing
+## Debugging
 It is usefull to be able to monitor the training of a neural network, and add filter for events, such as the apparition of nan or inf number. To do so, clip a tensor filter to the current session  
 ```
 from tensorflow.python import debug as tf_debug
@@ -743,11 +861,32 @@ Here is a non exhaustive list of usefull command:
 * Run a session until a filter catch something ```run -f filter_name``` (Note that the filter name is the filter name passed to add_tensor_filter).
 * Run a session for a number of step: run -t 10
 
+## Tracing
+It is possible to trace one call  of sess.run with minimal code modification.  
+[Error with cupt64_80.dll solve](https://github.com/tensorflow/tensorflow/issues/6235)  
+```
+run_metadata = tf.RunMetadata()
+sess.run(op,
+         feed_dict,
+         options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
+         run_metadata=run_metadata)
+# run_metadata contains StepStats protobuf grouped by device
+
+from tensorflow.python.client import timeline
+trace = timeline.Timeline(step_stats=run_metadata.step_stats)
+
+trace_file = open('timeline.ctf.json', 'w')
+trace_file.write(trace.generate_chrome_trace_format())
+
+# open chrome, chrome://tracing
+# search the file :)
+```
+
 # Miscellanous
 * Use any numpy operations in the graph. Note that it does not support model serialization
     ```
     def function(tensor):
-	return np.repeat(tensor,2, axis=0)
+    return np.repeat(tensor,2, axis=0)
     inp = tf.placeholder(tf.float32, [None])
     op = tf.py_func(function, [inp], tf.float32)
 
@@ -781,6 +920,12 @@ Here is a non exhaustive list of usefull command:
                                          var in list_tf_variables]
   ``` .
 
+### Tensor operations
+* ```tf.slice(tensor, begin_tensor, slice_tensor)```. Extract a slice of a tensor. For example, if tensor has 3 dimension, begin_tensor[i] represents the offset to start the slice in the i dimensions, and slice_tensor[i]  represents the number of value to take in every dimension i  
+* ```tf.split(axis, numb_splits, tensor)```. Split a tensor along the axis in numb_splits. Return numbsplits tensors.
+* ```tf.tile(tensor, multiple)```. Repeat a tensor in dimensions i by multiple[i]
+* ```tf.dynamic_partition(tensor, partitions, num_partitions)```: Split a tensor into multiple tensor given a partitions vector. If partitions = [1, 0, 0, 1, 1], then the first and the last two elements will form a separate tensor from the other. Return a list of tensor.
+* ```tf.one_hot(tensor, depth, on_value=1, off_value=0, axis=-1)``` replace all indices by a one hot tensor. If tensor is of shape ```batch_size x nb_indices```, a new dim of size ```depth``` is added in the ```axis``` dimension
 
 # Tensorflow fold
 All tensorflow_fold function to treat sequences:
