@@ -59,6 +59,7 @@ train_gen = optimizer.apply_gradients(grads)
 
 ### Get an approximation of the size in byte of the graph
 ```
+# not sure ...
 for v in tf.global_variables():
     vars += np.prod(v.get_shape().as_list())
 vars *= 4
@@ -80,8 +81,8 @@ Sparse vector are created usually from sequence features when parsing a protobuf
 
 # Variable
 ## Some parameters
-* Setting trainable=False keeps the variable out of the GraphKeys.TRAINABLE_VARIABLES collection in the graph, so they won't be trained when backpropagating. 
-* Setting collections=[] keeps the variable out of the GraphKeys.GLOBAL_VARIABLES collection used for saving and restoring checkpoints.  
+* Setting ```trainable=False``` keeps the variable out of the ```GraphKeys.TRAINABLE_VARIABLES``` collection in the graph, so they won't be trained when backpropagating. 
+* Setting ```collections=[]``` keeps the variable out of the ```GraphKeys.GLOBAL_VARIABLES``` collection used for saving and restoring checkpoints.  
 Example: ```input_data = tf.Variable(data_initializer, trainable=False, collections=[])```
 
 ## Tensors
@@ -212,7 +213,8 @@ def main():
 
 if __name__ == '__main__':
     main()
-```
+``` 
+else use [chi](https://github.com/rmst/chi)
 
 # Checkpoint
 ### Save and Restore
@@ -516,7 +518,7 @@ Use the tf.nn.contrib.layers.batch_norm
 is_training = tf.placeholder(tf.bool)
 batch_norm(pre_activation, is_training=is_training, scale=True)
 ```  
-By default, movingmean, and movingscale are not in the default graph, but in _updateOperation, hence to compute the movingmean, and movingscale, you should that the operation should be computed before the loss function is calculated:
+By default, movingmean, and movingscale are not in the default graph, but in ```updateOperation````, hence to compute the movingmean, and movingscale, you should that the operation should be computed before the loss function is calculated:
 
 ```
 update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
@@ -525,7 +527,7 @@ with tf.control_dependencies(update_ops):
             grads_dis = self.optimizer.compute_gradients(loss=self.dis_loss, var_list=self.dis_variables)
             self.train_dis = self.optimizer.apply_gradients(grads_dis)
 ```
-
+Another way, of computing the moving variable, is to do in place in the graph, is to set ```updates_collections=None```.
 The trainable boolean can be a placeholder, so that depending on the feeding dictionnary, the computation in the batch norm layer will be different  
 
 # Preprocessing examples with Queues
@@ -584,7 +586,7 @@ However, it is very verbose, but allows reusability, and really split between th
         # If the sequence length is fixed for every example
         "tokens": tf.FixedLenSequenceFeature([], dtype=tf.int64),
         "labels": tf.FixedLenSequenceFeature([], dtype=tf.int64),
-        # else use VarLeanFeature which will create SparseVector
+        # else use VarLenFeature which will create SparseVector
         "sentences": tf.VarLenFeature(dtype=tf.float32)
     }
 
@@ -616,7 +618,7 @@ images = tf.train.shuffle_batch(
 ```
 
 #### Batch queues
-Same as shuffle queues without ```min_after_queues```. It is also possible to dynamically pad entries in the queues. Every varleanfeatures created which are now SparseVector will be padded to the maximum length between all elements in the same catagory and batch.
+Same as shuffle queues without ```min_after_queues```. It is also possible to dynamically pad entries in the queues. Every ```VarLenFeatures``` created which are now ```SparseVector``` will be padded to the maximum length between all elements in the same catagory and batch.
 ```
 tf.train.batch(tensors=[review, score, film_id],
                           batch_size=batch_size,
@@ -800,6 +802,8 @@ output_fw, output_bw = outputs
 states_fw, states_bw = states
 ```
 
+### Seq2Seq model
+/TODO
 
 # Higher order operators
 * tf.map_fn() : apply a function to a list of elements.
@@ -863,7 +867,7 @@ Here is a non exhaustive list of usefull command:
 
 ## Tracing
 It is possible to trace one call  of sess.run with minimal code modification.  
-[Error with cupt64_80.dll solve](https://github.com/tensorflow/tensorflow/issues/6235)  
+[cupt64_80.dll error](https://github.com/tensorflow/tensorflow/issues/6235)  
 ```
 run_metadata = tf.RunMetadata()
 sess.run(op,
