@@ -629,8 +629,34 @@ tf.train.batch(tensors=[review, score, film_id],
 As of now, dynamic pad is not support with shuffle, but one may use a shuffle_batch as input tensors of a dynamically pad queue.
 
 #### Bucket queues
-Tricky and not well documented (does not seem to work with multiple different variable length features). [Best documentation so far :'('](https://github.com/tensorflow/tensorflow/issues/5609)
-
+1. What to pass to the bucket queues?	
+	```python
+	# Set this variable to the maximum length between all tensor of a single example
+	# For example, if an example, consists of a encoder sentence, an a decoder sentence
+	# Then, pick the longest length
+	# Consider, that a pair of (encoder sentence, decoder sentence) is return by a shuffle_batch queue
+	encoder_sentence, decoder_sentence = tf.train.shuffle_queue(..., batch_size=1, ...)
+	``` 
+2. Then set length_table to the max between both length, for example. Note that setting the minimum length gives optimal performance because tensor are not append to a too largebucket:  
+	```
+	length_table = tf.constant([], dtype=tf.int32)
+	```
+3. Call ```bucket_by_sequence_length()```:   
+	```
+	# the first argument is the sequence length specifed in the input_length
+    _, batch_tensors = tf.contrib.training.bucket_by_sequence_length(
+        input_length=length_table,
+        tensors=[encoder_sentence, decoder_sentence]
+    	batch_size=,
+    	
+    	# devices buckets into [len < 3, 3 <= len < 5, 5 <= len]
+    	bucket_boundaries=[3, 5],
+    	
+    	# this will bad the source_batch and target_batch independently
+    	dynamic_pad=True,
+    	capacity=2
+	)
+	```
 
 ### Validation and Testing queues
 It is not recommendent to use a ```tf.cond(is_training, lambda _: training_queue, lambda _: test_queue)``` because training becomes very slow becomes at each iteration (training time), the cond will be waiting for the two queues to output something, and everytime some data are dropped.  
