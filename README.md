@@ -829,7 +829,46 @@ states_fw, states_bw = states
 ```
 
 ### Seq2Seq model
-/TODO
+#### ```rnn_decoder()```
+##### Parameters
+* decoder_inputs (2D tensor)
+* initial_state
+* cell
+* loop_function(prev, i): It takes the output of the decoder at step i, and should return the input for the step (i+1). If i==1, then the first element should be "GO".
+
+##### Output
+Pairs of (outputs, states). 
+
+
+#### ```basic_rnn_seq2seq()```: 
+* Encode the ```encoder_inputs``` with a ```static_rnn```. It uses a ```static_rnn```
+
+#### ```tied_rnn_seq2seq()```
+* Encode the encoder inputs with a static RNN, then pass the current state of the encoder at the end, to the begining of the decoder.
+
+#### ```embedding_rnn_seq2seq()```: 
+##### Encoder:
+* First, it transforms the encoder inputs into a 3D tensor using ```EmbeddingWrapper```. ```EmbeddingWrapper``` is a simple wrapper that creates an embedding matrix, do the lookup and return a cell.
+* Secondly, the encoder inputs is passed into a static_rnn.
+* The cell is re-used for the decoder.
+* However, if ```output_projection``` is set, then a ```OutputProjectionWrapper``` is created. It will transform linearly the output of the decoder. 
+* If ```feed_previous``` is a boolean then a boolean, only one graph is created, else two are created, using ```tf.cond()```. They share weights.
+* The decoder has its own embedding matrix. It is a ```embedding_decoder()```
+
+#### ```attention_decoder()```
+##### Parameters
+* ```attention_states()``` is a vector of 3 dimensions, containing the attention vector used for the decoder.
+* ```num_heads()``` is the number of pass over the ```attention_states()```
+* ```loop_function()``` is also available.
+
+#### ```embedding_attention_seq2seq()```
+If ```output_projection``` is None, then the attention vector are linearly transformed to have the same shape to ```num_decoder_symbols()```.
+
+
+
+
+
+
 
 # Higher order operators
 * tf.map_fn() : apply a function to a list of elements.
@@ -894,6 +933,7 @@ Here is a non exhaustive list of usefull command:
 ## Tracing
 It is possible to trace one call  of sess.run with minimal code modification.  
 [cupt64_80.dll error](https://github.com/tensorflow/tensorflow/issues/6235)  
+
 ```
 run_metadata = tf.RunMetadata()
 sess.run(op,
@@ -911,6 +951,36 @@ trace_file.write(trace.generate_chrome_trace_format())
 # open chrome, chrome://tracing
 # search the file :)
 ```
+
+## Debugging function
+### tf.Print
+```python
+# examples
+out = fully_connected(out, num_outputs)
+# tf.Print() is an Identity operation. 
+out = tf.Print(out, 
+               list_of_tensor_to_print, 
+               str_message, 
+               first_nb_times_to_log, 
+               nb_element_to_print)
+
+```
+
+### tf.Assert
+Assert operation should always be used with conditionnal dependance. One way to do this is to create a collection of assertions, and group them before passing them as a run operation.
+```python
+tf.add_to_collection('Assertions',
+         tf.Assert(tf.reduce_all(whatever_condition), 
+                   [tensor_to_print_if_condition], 
+                   name=...)
+
+# Then group assertion
+assert_op = tf.group(*tf.get_collection('Assertions'))
+... = session.run([train_op, assert_op], feed_dict={...})
+```
+
+### Python astuce
+* ```from IPython import embed; embed()```: Open a IPython shell on the current context. It stops the execution.
 
 # Miscellanous
 * Use any numpy operations in the graph. Note that it does not support model serialization
@@ -939,6 +1009,7 @@ trace_file.write(trace.generate_chrome_trace_format())
 * ``` tf.pad(image, [[16, 16], [16, 16], [0, 0]])```: pad a tensor. Here the tensor is a 3D tensor of shape (5, 4, 3) for example. Afterwards it will be of size (16 + 5 + 16, 16 + 4 + 16, 0 + 3 + 0), where zeros are add _upper_ and _after_ the current vector.
 * ```tf.groups(op_1, op_2, op_3)``` can be pass to sess.run and it will run all operations (but it will not return any output, only computed operations) 
 * ```tf.nn.sparse_softmax_cross_entropy_with_logits(labels, logits) expects labels to be int32 of size (batchsize), where every element is an integer from 0 to nbclasses. logits should be a float32 vector of size (batchsize, nbclasses) with values in it are not probabilities (logit form, before softmax)
+* ```tensor.get_shape().assert_is_compatible_with(shape=)```: Check if shape matched
 * ```tf.cond(pred, fn1, fn2)```: Given a condition, fn1 or fn2 (a callable) is return. Here is an example to return a rgb image if it isn't already one: 
     ```
     image = tf.cond(pred=tf.equal(tf.shape(image)[2], 3), fn2=lambda: tf.image.grayscale_to_rgb(image), fn1=lambda: image)
