@@ -834,23 +834,25 @@ states_fw, states_bw = states
 * decoder_inputs (2D tensor)
 * initial_state
 * cell
-* loop_function(prev, i): It takes the output of the decoder at step i, and should return the input for the step (i+1). If i==1, then the first element should be "GO".
+* loop_function(prev, i): It takes the output of the decoder at step i, and should return the input for the step (i+1). At the first step of the decoder, this function is not used, instead the ```decoder_inputs```, so the first symbol should represent the element ```GO```.
 
 ##### Output
-Pairs of (outputs, states). 
+A pairs of (outputs, states) at each timestep. 
 
 
 #### ```basic_rnn_seq2seq()```: 
-* Encode the ```encoder_inputs``` with a ```static_rnn```. It uses a ```static_rnn```
+* Encode the ```encoder_inputs``` with a ```static_rnn```. Decode it with a ```rnn_decoder()``` passing its the encoder cell states.
 
 #### ```tied_rnn_seq2seq()```
-* Encode the encoder inputs with a static RNN, then pass the current state of the encoder at the end, to the begining of the decoder.
+* Encode the encoder inputs with a ```static_rnn```, then pass the current state of the encoder at the end, to the begining of the decoder. Encoder and decoder use the same RNN cell and share parameters.
 
 #### ```embedding_rnn_seq2seq()```: 
 ##### Encoder:
 * First, it transforms the encoder inputs into a 3D tensor using ```EmbeddingWrapper```. ```EmbeddingWrapper``` is a simple wrapper that creates an embedding matrix, do the lookup and return a cell.
 * Secondly, the encoder inputs is passed into a static_rnn.
 * The cell is re-used for the decoder.
+
+##### Decoder
 * However, if ```output_projection``` is set, then a ```OutputProjectionWrapper``` is created. It will transform linearly the output of the decoder. 
 * If ```feed_previous``` is a boolean then a boolean, only one graph is created, else two are created, using ```tf.cond()```. They share weights.
 * The decoder has its own embedding matrix. It is a ```embedding_decoder()```
@@ -860,12 +862,26 @@ Pairs of (outputs, states).
 * ```attention_states()``` is a vector of 3 dimensions, containing the attention vector used for the decoder.
 * ```num_heads()``` is the number of pass over the ```attention_states()```
 * ```loop_function()``` is also available.
+* The attention mechanism comes from [here](http://arxiv.org/abs/1412.7449)
+
+#### ```one2_many_rnn_decoder()```
+#### Parameters
+* ```encoder_inputs``` is embedded with ```EmbeddingWrapper```, then pass to a ```static_rnn```.  
+* Iterate over pair of ```name```, ```decoder_input``` in ```decoder_inputs_dict```. Each decoder has its vocab size in ```num_decoder_symbols_dict``` and its cell type in ```dec_cells_dict```.  
+* Each decoder cells are automatically passed into a ```OutputProjectionWrapper```.  
+
+#### Returns
+It returns a dictionnary of loss and cell states.
+
 
 #### ```embedding_attention_seq2seq()```
 If ```output_projection``` is None, then the attention vector are linearly transformed to have the same shape to ```num_decoder_symbols()```.
 
+#### ```sequence_loss()```
+Compute the cross entropy at each timestep between the prediction and the true target. At each timesteps compute ```loss = sparse_softmax_cross_entropy_with_logits(prediction, target)```` if ```softmax_function = None```. Sum all loss. It is possible to ```average_accross_time```, and after the ```average_accross_batch```. 
 
-
+#### ```model_with_buckets()```
+Iterate over all buckets, sorted by length. At each iteration, it reused the graph of the previous call to ```seq2seq```. Only ```encoder_inputs``` and ```decoder_inputs``` are passed to the ```seq2seq``` function. 
 
 
 
