@@ -1175,7 +1175,8 @@ nn.evaluate(x=x_test, y=y_test)
 * ```Linear(output_size, initializers={'w': ..., 'b': ...})```
 * ```SelectInput(idx=[1, 0])(input0, input1) --> (input1, input0)```
 
-``` ```AttentiveRead```: See here an example
+* ```AttentiveRead```: See here an example:  
+```
 logit_mode = some_func # produces logit corresponding to a attention vector slot compability
 a = AttentiveRead(attention_logit_mod=...)
 _build(memory : tf.Tensor([batch_size, num_att_vec, attention_dim]),
