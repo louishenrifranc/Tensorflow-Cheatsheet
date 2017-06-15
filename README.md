@@ -15,6 +15,7 @@
 - [Miscellanous](#miscellanous)
 - [Dynamic graph computation](#tensorflow-fold)
 - [Tensorflow Estimator](#tensorflow-estimator)
+- [Variable scope](#sonnet)
 
 # Introduction
 * Tensorflow, a Symbolic library [on symbolic and imperative libraries](http://mxnet-tqchen.readthedocs.io/en/latest/system/program_model.html))  
@@ -530,7 +531,8 @@ with tf.control_dependencies(update_ops):
 Another way, of computing the moving variable, is to do in place in the graph, is to set ```updates_collections=None```.
 The trainable boolean can be a placeholder, so that depending on the feeding dictionnary, the computation in the batch norm layer will be different  
 
-# Preprocessing examples with Queues
+# Preprocessing examples with Queues and tf.contrib.Dataset
+## Old Way
 It is possible to load data directly from numpy arrays, however it is best practise to use protobuf tensorflow formats such as ```tf.Example``` or ```tf.SequenceExample```. 
 However, it is very verbose, but allows reusability, and really split between the model and the data preprocessing  
 
@@ -641,7 +643,7 @@ As of now, dynamic pad is not support with shuffle, but one may use a shuffle_ba
 	```
 	length_table = tf.constant([], dtype=tf.int32)
 	```
-3. Call ```bucket_by_sequence_length()```:   
+3. Call ```bucket_by_sequence_length()```:    
 	```
 	# the first argument is the sequence length specifed in the input_length
     _, batch_tensors = tf.contrib.training.bucket_by_sequence_length(
@@ -661,6 +663,39 @@ As of now, dynamic pad is not support with shuffle, but one may use a shuffle_ba
 ### Validation and Testing queues
 It is not recommendent to use a ```tf.cond(is_training, lambda _: training_queue, lambda _: test_queue)``` because training becomes very slow becomes at each iteration (training time), the cond will be waiting for the two queues to output something, and everytime some data are dropped.  
 The recommanded way, is to have a different script that run separately (in another script), fetch some checkpoint, and compute accuracy
+
+## New way ```tf.contrib.data.Dataset``` <3
+### Create a dataset
+* ```Dataset.from_tensor_slices(tensor, numpy array, tuple of tensor, tuple of tuple ...)```: Everything is loaded into memory
+* ```Dataset.zip((dataset1, dataset2))```: zip multiple dataset
+* ```Dataset.range(100)``` 
+*```Dataset.TFRecordDataset(list_of_filenames)```
+
+### Transform a dataset
+* ```dataset.map(_function_to_apply_to_each_element)```. Can even work with non tensorflow operation, using ```py_func```:  
+	```dataset.map(lambda x, y: tf.py_func(_function, [objects], [types]))```
+* ```dataset.flat_map```: not sure
+* ```dataset.filter```: filter based on a condition
+
+### Shape & outputs
+* ```dataset.output_types``` and ```dataset.output_shapes```
+
+### Iterate
+* one shot iterator. ```dataset.make_one_shot_iterator()```, then ```get_next()```. It is not possible to condition the dataset elements on some other graph variables such as placeholders
+* initializable iterator: ```dataset.make_initializable_iterator()```, then ```get_next()```. Element in the dataset can be loaded from placeholders by calling ```sess.run(iterator.initializer, feed_dict={})```.
+* reinitializable iterator: two dataset with same output type and shape  
+	```
+	it = Iterator.from_structure(output_types, output_shapes)
+	get_next()
+	# For example
+	it.make_initializer(training_dataset)
+	it.make_initializer(validation_dataset)
+	```
+
+### Other functions
+* unroll iterator until ```tf.errors.OutofRangeError``` or ```dataset.repeat(num_times)```
+* shuffle dataset with ```dataset.shuffle(buffer_size)```
+* batch dataset with ```dataset.batch(batch_size)```, or ```padded_batch``` for sequence. 
 
 # Computer vision application
 ## Convolution
@@ -1130,3 +1165,67 @@ nn.fit(x=x_train, y=y_train, steps=200, monitors=[logging_hook, validation_monit
 ```
 nn.evaluate(x=x_test, y=y_test)
 ```
+
+
+# Sonnet
+* Everything should inherit from ```sonnet.AbstractModule```.
+* The main idea is to have module that get called multiple times, but variable are created only once.
+
+### Already defined module
+* ```Linear(output_size, initializers={'w': ..., 'b': ...})```
+* ```SelectInput(idx=[1, 0])(input0, input1) --> (input1, input0)```
+
+``` ```AttentiveRead```: See here an example
+logit_mode = some_func # produces logit corresponding to a attention vector slot compability
+a = AttentiveRead(attention_logit_mod=...)
+_build(memory : tf.Tensor([batch_size, num_att_vec, attention_dim]),
+	   query: tf.Tensor([batch_size, vector_to_attend_size],
+	   mask : tf.Tensor([batch_size, num_att_vec])))
+--> return [batch_size, attention_dim]: computed weighted sum,
+		   [batch_size, num_att_vec]: softmax weights
+		   [batch_size, num_att_vec]: unormalized weights
+```
+* ```LSTM(hidden_size)```. Also possibility to apply batch norm on each input
+
+
+### Define your own module
+* Inherit ```snt.AbstractModule()```, and call ```super(BaseClas, self).__init__(name=name_module)```
+* Implement ```_build()```, and inside always create variables with ```tf.get_variables()```
+* If you want to enter the scope of the module (outside of build), do it inside ```with self.enter_variable_scope()``` if you want to create variables
+
+### Define your recurrent module
+* Inherit ```snt.RNNCore```
+* Implement ```_build()``` which compute one timestep
+* Implement ```state_size```, and ```output_size``` which are properties of the cell
+
+### Share variable scope between multiple functions
+Example:
+```
+class GAN(snt.AbstractModule):
+	...
+
+	def _build(input)
+	fake = self.generator(input)
+	return self.discirminator(fake)
+
+	@snt.experimental.reuse_vars
+	def discriminator(sample)
+		...
+
+
+	@snt.experimental.reuse_vars
+	def generator(sample)
+		...
+
+
+gan = GAN()
+fake_disc_out = gan(noise)
+# shared variable even if not in build and not enter_variable_scope
+true_disc_out = gan.generate(true)
+```
+* Each function should not try to instantiate a variable with the same name
+
+
+### Notes
+* Get variables of the module: ```self.get_variables()```
+
