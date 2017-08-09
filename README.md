@@ -7,9 +7,9 @@
 - [Save and restore model](#checkpoint)
 - [Tensoarboard](#tensoarboard)
 - [Regularization](#regularization)
-- [Preprocessing](#preprocessing-examples-with-queues)
-- [CNN & shits](#computer-vision-application)
-- [RNN & shits](#nlp-application)
+- [Preprocessing](#input-data-to-the-graph)
+- [Computer Vision](#computer-vision-application)
+- [Natural Language Processing](#nlp-application)
 - [Higher order operations](#higher-order-operators)
 - [Debugging](#debugging-and-tracing)
 - [Miscellanous](#miscellanous)
@@ -42,9 +42,9 @@ ops.reset_default_graph()
 ### Collecting variables in the graph
 To collect and retrieve values associated with a Graph, it is possible to get them with GraphKeys. Variables are automatically placed in collections. Here are the main collections used: For example ```GLOBAL_VARIABLE```, or ```MODEL_VARIABLE```, or ```TRAINABLE_VARIABLE```, ```QUEUE_RUNNERS```, or even more specifically the ```WEIGHTS```, ```BIASES```, or ```ACTIVATIONS```.
 
-* You can get the name of all variables that have not been initialized by passing a list of Variable to the function ```tf.report_uninitialized_variables(list_var). It returns a list of names of uninitialised variables
+* You can get the name of all variables that have not been initialized by passing a list of Variable to the function ```tf.report_uninitialized_variables(list_var). It returns the list of uninitialised variables
 
-### Split training variables between two neural network. An example for GAN
+### Split training variables between two neural network. An example with GAN architecture
 IN GANs, there are two neural network: the Generator and the Discriminator. Each one have their own loss, but only the discriminator updated all weights. The Generator updates only its own weights. For this, we need to use different scope (or use Sonnet, see bottom): one "generator" scope, and one "discriminator" scope, where all the necessary weight will be instanciated.  
 1. First you need to retrieve all trainable variable with ```train_variables = tf.train_variables()```  
 2. Then you split the training variable in two lists:  
@@ -58,7 +58,7 @@ grads = optimizer.compute_gradients(loss_generator, var_list=list_gen)
 train_gen = optimizer.apply_gradients(grads)
 ```
 
-### Get an approximation of the size in byte of the graph
+### Get an approximation of the size in byte of the Graph
 ```
 # This is the best approximation I've been able to found online. Not sure how good it is, because it doesn't take into
 # account used for automatic differentiation
@@ -122,7 +122,6 @@ with tf.variable_scope("image_filters") as scope:
     result2 = build_funct()
 ```
 
-
 # Checkpoint
 ### Save and Restore
 ```
@@ -142,13 +141,13 @@ else:
     tf.train.global_step(self._sess, self.global_step)
 ```
 
-### What are the files saved
+### What are the files saved?
 * The checkpoint file is used in combination of high-level helper    for different time loading saved chkg
 * The meta ckpt hold the compressed Protobuf graph of your model and all the metadata associated
 * The chkp file contains the data
 * The events file store everything for visualization
 
-### Connect graph already trained
+### Connect an already trained Graph 
 It is possible to connect multiple graphs, for example if you want to connect vgg19 to a new graph, and only trained the last one, here is a simple example:
 ```
 vgg_saver = tf.train.import_meta_graph(dir + '/vgg/results/vgg-16.meta')
@@ -186,6 +185,7 @@ sess = tf.Session()
 summary_writer = tf.summary.FileWriter('logs', graph=sess.graph)
 ```
 Connection between them is done with the line: ```with tf.Session(graph=graph) as sess:```
+
 ### Summary about activation and gradient
 ```
 def add_activation_summary(var):
@@ -224,7 +224,7 @@ You can call this function as many time as you want, if you call it with the sam
 ```python
 merged_summary_op = tf.summary.merge_all()
 ```
-If you create new summary after this function, they won't be collect by calling ```merged_summary_op```.
+If you create new summary after this function, they won't be part of the summary collected.
 
 ### Collect stats during each iteration
 ```python
@@ -283,7 +283,7 @@ summary_writer.add_summary(summary_str, current_iter)
     ```
 
 <details>
-<summary>Full example</summary>
+<summary>A code example</summary>
 <p><code>
 
     # Prerequisite
@@ -411,6 +411,7 @@ def l1_l2_regularizer(weight_l1=1.0, weight_l2=1.0, scope=None):
 
     return regularizer
 ```
+
 ### Dropout
 ```
 hidden_layer_drop = tf.nn.dropout(some_activation_output, keep_prob)
@@ -435,9 +436,9 @@ with tf.control_dependencies(update_ops):
 Another way, of computing the moving variable, is to do in place in the graph, is to set ```updates_collections=None```.
 The trainable boolean can be a placeholder so that depending on the feeding dictionary, the computation in the batch norm layer will be different  
 
-# Saving TfRecords and Load them with ```tf.data.Datasets```
-It is possible to load data directly from Numpy arrays. However, it is the best practice to use protobuf tensor flow formats such as ```tf.Example``` or ```tf.SequenceExample```. 
-However, it is very verbose but allows reusability, and decouple model and data preprocessing.  
+# Input data to the graph
+It is possible to load data directly from Numpy arrays using ```feed_dict```. However, it is the best practice to use protobuf tensor flow formats such as ```tf.Example``` or ```tf.SequenceExample```. It makes the model decouple from the data preprocessing.
+One drawback of this method, is that it is quite verbose.  
 
 1. Create a function to transform a batch element to a ```SequenceExample```:  
     ```python
@@ -563,10 +564,10 @@ As of now, dynamic pad is not supported with shuffle, but one may use a shuffle_
 It is **not recommended** to use a ```tf.cond(is_training, lambda _: training_queue, lambda _: test_queue)``` because training becomes very slow becomes at each iteration as both queues output elements but only one of them is used.  
 The recommended way is to have a different script that runs separately (in another script), fetch some checkpoint, and compute accuracy
 
-## How to use ```tf.contrib.data.Dataset```
-```tf.contrib.data.Dataset``` allow you to implement how to implement the preprocessing of your data, before being fed to the model. It can receive as input TextFile, TfRecords, Numpy arrays.
-Here is a complex example where we have two files. In each file, there is a sequence of ids, representing token in vocabulary.
-The first file contains the ids of a question; the second file contains the ids of the answers:
+## How to use tf.contrib.data.Dataset and why using it?
+```tf.contrib.data.Dataset``` takes care of the data loading into the graph. Compared to the previous implementation, it can be use to fed single input, or use this dataset to create queues. Dataset can be made of text files, TfRecords, or even Numpy arrays.
+Here is an example where we have two files. In each file, on each line, there is a sequence of ids, representing token id of a vocabulary.
+The first file contains the ids of the questions; the second file contains the ids of the answers:
 ```
 def input_fn():
 """Let's define an input_fn of an Estimator
@@ -602,7 +603,8 @@ def input_fn():
 
 return input_fn
 ```
-Here are some other cool functions:
+
+To dive deeper, here are some cool features:
 ### Create a dataset
 * ```Dataset.from_tensor_slices(tensor, numpy array, tuple of tensor, tuple of tuple ...)```: Everything is loaded into memory
 * ```Dataset.zip((dataset1, dataset2))```: zip multiple dataset
@@ -662,20 +664,15 @@ h3 = utils.conv2d_transpose(h2, W3, b3, output_shape_h3, strides=[1, 2, 2, 1], p
 
 
 
-
 # NLP application
-* Look for embedding in a matrix given an id:
-```
-tf.nn.embedding_lookup(embeddings, mat_ids)
-# where embeddings is a tf.Variable()
-```
+* Look for embedding in a matrix given an id: ```tf.nn.embedding_lookup(embeddings, mat_ids)```
 
 ## RNN, LSTM, and shits
 ### Dynamic or static rnn
-* ```tf.dynamic_rnn````uses a ```tf.While``` allowing to dynamically construct the graph, and passing different sentence lengths between batches.
+* ```tf.dynamic_rnn````uses a ```tf.While``` allowing to dynamically construct the graph, and passing different sentence lengths between batches. Do not use ```static_rnn```.
 
 ### Set state for LSTM cell stacked
-1. An LSTM cell state contains two tensors (the context, and the hidden state). Let's create a placeholder for both these tensors  
+1. An LSTM cell state is a tuple containing two tensors (the context, and the hidden state). Let's create a placeholder for both of these tensors:  
     ```
 
     # create a (context tensor, hidden tensor) for every layers
@@ -699,7 +696,7 @@ tf.nn.embedding_lookup(embeddings, mat_ids)
     ```
 
 ### Stacking recurrent neural network cells
-1. Create the architecture (example for a GRUCell with dropout between every stacking cell
+1. Create the architecture (example for a GRUCell with dropout and residual connections between every stacking cell
     ```
     from tensorflow.contrib.rnn import GRUCell, DropoutWrapper, MultiRNNCell
 
@@ -727,9 +724,9 @@ tf.nn.embedding_lookup(embeddings, mat_ids)
     ```
 
 ### Variable sequence length input
-* First of all ```dynamic_rnn()``` return an output vector, which is of size ```max_length_sentence x hidden_vector```. It contains all the hidden state at every timestep. The other return object is a state object. It is the current state of the cell (hence it depends on the cell used, lstm or rnn...).   
-Often, passing sentences to RNN, not all of them are of the same length. Tensorflow wants us to pass into an RNN a tensor of shape ```batch_size x sentence_length x embedding_length```.
-To support this in our RNN, we have first to create a 3D array where for each row (every batch element), we pad with zeros after reaching the end of the batch element sentence. For example if the length of the first sentence is 10, and ```sentence_length=20```, then all element ```tensor[0,10:, :] = 0``` will be zero padded.  
+* First of all ```dynamic_rnn()``` return an output vector, which is of size ```batch_size x max_length_sentence x hidden_vector```. It contains all the hidden state at every timestep. The other output of this function is the state of the cells. 
+
+When passing sequences to RNN, their length may vary. Tensorflow wants us to pass into an RNN a tensor of shape ```batch_size x sentence_length x embedding_length```. To support this in our RNN, we have first to create a 3D array where for each row (every batch element), we pad with zeros after reaching the end of the batch element sentence. For example if the length of the first sentence is 10, and ```sentence_length=20```, then all element ```tensor[0,10:, :] = 0``` will be zero padded.  
 
 1. It is possible to compute the length of every batch element with this function:  
     ```
@@ -741,7 +738,7 @@ To support this in our RNN, we have first to create a 3D array where for each ro
         length = tf.cast(length, tf.int32)
         return length # vector of size (batch_size) containing sentence lengths
     ```
-2. Using the length function, we can create our rnn  
+2. Using the length function, we can use  ```dynamic_rnn```  
     ```
 
     from tensorflow.nn.rnn_cell import GRUCell
@@ -760,11 +757,11 @@ To support this in our RNN, we have first to create a 3D array where for each ro
 
     ```
 
-A better solution is to always pass as input the length of the sequence. This length allow to create a mask ```tf.sequence_mask(sequence_length, maxlen=tf.shape(sequence)[1])``` which can be useful to compute the loss function.
+Note: A better solution is to always pass as input the length of the sequence. This vector can be used to create a mask with ```tf.sequence_mask(sequence_length, maxlen=tf.shape(sequence)[1])```. This mask can be used when computing a loss and masking value that should not be accounted.
 
-There are two cases, whether we are interested in only the last element outputted, or all output at every time step. Let's define a function for both of them
+There are two main use of loss function for RNN: whether we are interested in only the last element outputed, or all outputs at every time step. Let's define a function for both of them
 
-#### Case 1: output at each time steps
+#### Case 1: Output at each time steps
 __Example__: Compute the cross-entropy for every batch element of different size (we can't use ```reduce_mean()```)
 
 ```
@@ -782,7 +779,7 @@ def cost(targets):
     return tf.reduce_mean(cross_entropy)
 ```
 
-#### Case 2: output at the last timestep
+#### Case 2: Output at the last timestep
 __Example__: Get the last output for every batch element:
 ```
 def last_relevant(output, length):
@@ -796,7 +793,7 @@ def last_relevant(output, length):
 ```
 
 ### Bidirectionnal Recurrent Neural Network
-Not so different from the standart ```dynamic_rnn```, we just need to pass cell for forward and backward pass, and it will return two outputs, and two states variables.  d
+Not so different from the standart ```dynamic_rnn```, we just need to pass cell for forward and backward pass, and it will return two outputs, and two states variables, both tuples
 Example:
 ```
 cell = tf.nn.rnn_cell.LSTMCell(num_units=hidden_size, state_is_tuple=True)
@@ -814,7 +811,7 @@ states_fw, states_bw = states
 
 
 # Higher order operators
-* tf.map_fn() : apply a function to a list of elements.
+* tf.map_fn() : apply a function to a list of elements. This function is quite useful in combination with complex tensorflow operation that operate only on 1D input such as ```tf.gather()```.
 ```
 array = (np.array([1, 2]), np.array([2, 3])
 tf.map_fn(lambda x: (x[0] + x[1], x[0] * x[1]), array)
@@ -847,11 +844,14 @@ body = lambda i, jk: return (i+1, (jk[0] - jk[1], jk[0] + jk[1]))
 
 # Debugging and Tracing
 ## Debugging
-It is useful to be able to monitor the training of a neural network and add filter for events, such as the apparition of nan or inf number. To do so, clip a tensor filter to the current session  
+Debugging tensorflow variables is becoming easier with the **working** tensorflow Debugger. I found it useful (in a sense, that it is better than nothing), but I'm always spending hours finding the correct variables in the list of variable names. Here is how to activate tensorflow debugger:   
 ```
 from tensorflow.python import debug as tf_debug
 
 sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+```
+You can create filter. If so, the debugger might run until fitlering catch a value. Here is an example to catch nan values:
+```
 sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 
 # where the filter is defined this way
@@ -859,8 +859,8 @@ def has_inf_or_nan(datum, tensor):
   return np.any(np.isnan(tensor)) or np.any(np.isinf(tensor))
 ```
 
-Then, run the model ```python model.py --debug```. A command line will prompt at first sess.run.
-Here is a non exhaustive list of usefull command:
+In practise, a command line will prompt at first sess.run.
+Here is a non exhaustive list of useful command:
 * Page down\up to move in the page (clicking in the terminal is also available)
 * Print the value of a tensor: ````pt hidden/Relu:0```
 * Print a sub-array ```pt hidden/Relu:0[0:50,:]```
@@ -874,7 +874,7 @@ Here is a non exhaustive list of usefull command:
 * Run a session for a number of step: run -t 10
 
 ## Tracing
-It is possible to trace one call of sess.run with minimal code modification.  
+It is possible to trace one call of ```sess.run``` with minimal code modification.  
 [cupt64_80.dll error](https://github.com/tensorflow/tensorflow/issues/6235)  
 
 ```
@@ -993,8 +993,8 @@ def get_input_fn():
 ```
 
 
-### The model function
-Here is a simple example of model function
+### Create a model function
+Here is a simple example of how to create a model function
 ```
 def model_fn(features, targets, mode, params):
     """
@@ -1028,21 +1028,21 @@ nn = tf.contrib.learn.Estimator(model_fn = model_fn,
                                 contrib=tf.contrib.learn.RunConfig(save_checkpoints_sec=10)) # In RunConfig, you define when to save the model, where...
 ```    
 
-### Monitor some values, Do crazy stuff
+### Add values to monitor to the Estimator
 You can attach ```hooks``` around an Estimator that will be used when the Estimator is training/predicting/evaluating. For example, when training, you might want to monitor some metrics, such as accuracy, loss.  Here is a link of the most [common hooks](https://github.com/tensorflow/tensorflow/blob/r1.2/tensorflow/python/training/basic_session_run_hooks.py) but you can define your hooks.
 
-### Train an estimator
+### Train the estimator
 ```
-nn.fit(x=x_train, y=y_train, steps=200, monitors=[logging_hook, validation_monitor])
+nn.train(input_fn, hooks=[logging_hook], steps=1000)
 ```
 
 ### Evaluate a model
 ```
-nn.evaluate(x=x_test, y=y_test)
+nn.evaluate(input_fn, hooks=[logging_hook], steps=1000)
 ```
 
 ### Using ```tf.contrib.learn.Experiment```
-Experiment is a wrapper around ```Estimator``` that allows you to simultaneously train and evaluate without adding hooks. 
+Experiment is a wrapper around ```Estimator``` that allows you to simultaneously train and evaluate, with minimal extra code. 
 Here is an example:
 ```
 def train_and_evaluate(self, train_params, validation_params, extra_hooks=None):
@@ -1063,7 +1063,7 @@ self.experiment.train_and_evaluate()
 ``` 
 
 ### Conclusion
-I practice I found ```Estimator``` very useful as it abstracts a lot of boilerplate code (saving, restoring, monitoring). It also forces you to decouple your code between creating a model and creating the input of your model.
+In practice, I find ```Estimator``` very useful as it abstracts a lot of boilerplate code (saving, restoring, monitoring). It also forces you to decouple your code between creating a model and creating the input of your model.
 
 # Sonnet
 Sonnet is one of the best library builds for Tensorflow. It allows you to group part of a Tensorflow graph as modules. You don't have to worry about scope. At the end of the journey, you write better code, less code, and reusable code. 
